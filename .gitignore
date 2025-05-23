@@ -1,3 +1,5 @@
 cmd/transVi/audio_parts
 cmd/transVi/subtitles
 *.mp4
+*.srt
+cmd/transVi/transVi

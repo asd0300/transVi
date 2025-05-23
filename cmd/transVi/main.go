@@ -103,6 +103,16 @@ func main() {
 		fmt.Printf("Merge and reencode failed: %v\n", err)
 		os.Exit(1)
 	}
+
+	// Clean up temporary directories
+	err = os.RemoveAll("audio_parts")
+	if err != nil {
+		fmt.Printf("Error deleting audio_parts directory: %v\n", err)
+	}
+	err = os.RemoveAll("subtitles")
+	if err != nil {
+		fmt.Printf("Error deleting subtitles directory: %v\n", err)
+	}
 }
 
 type Subtitle struct {
@@ -199,6 +209,23 @@ func mergeSubtitlesAndReencode() error {
 		return err
 	}
 
+	// Delete individual srt files after merging
+	err = filepath.WalkDir("subtitles", func(path string, d fs.DirEntry, err error) error {
+		if err != nil {
+			return err
+		}
+		if !d.IsDir() && filepath.Ext(path) == ".srt" {
+			err = os.Remove(path)
+			if err != nil {
+				fmt.Printf("Error deleting srt file %s: %v\n", path, err)
+			}
+		}
+		return nil
+	})
+	if err != nil {
+		return err
+	}
+
 	//ffmpegCmd := exec.Command("ffmpeg",
 	//	"-i", input,
 	//	"-vf", fmt.Sprintf("subtitles=%s", mergedSubtitles),
@@ -230,5 +257,14 @@ func processChunk(c Chunk) error {
 		"-f", "srt",
 		"-o", c.Output,
 	)
-	return runCommand(whisperCmd)
+	err = runCommand(whisperCmd) // Changed := to =
+	if err != nil {
+		return err
+	}
+	// Delete the .wav file after processing
+	err = os.Remove(c.Input)
+	if err != nil {
+		fmt.Printf("Error deleting audio file %s: %v\n", c.Input, err)
+	}
+	return nil
 }
