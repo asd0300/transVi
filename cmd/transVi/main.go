@@ -7,8 +7,11 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"sort"
+	"strconv"
 	"strings"
 	"sync"
+	"time"
 )
 
 type Chunk struct {
@@ -95,15 +98,67 @@ func main() {
 	}
 
 	// 4. Merge subtitles and re-encode
-	err = mergeSubtitlesAndReencode(*input, *output)
+	err = mergeSubtitlesAndReencode()
 	if err != nil {
 		fmt.Printf("Merge and reencode failed: %v\n", err)
 		os.Exit(1)
 	}
 }
 
-func mergeSubtitlesAndReencode(input, output string) error {
-	var sb strings.Builder
+type Subtitle struct {
+	Index   int
+	Start   time.Duration
+	End     time.Duration
+	Content string
+}
+
+func parseSrt(data []byte) ([]Subtitle, error) {
+	var subtitles []Subtitle
+	s := string(data)
+	parts := strings.Split(s, "\n\n")
+	for _, part := range parts {
+		if strings.TrimSpace(part) == "" {
+			continue
+		}
+		lines := strings.Split(part, "\n")
+		if len(lines) < 3 {
+			continue
+		}
+
+		index, err := strconv.Atoi(lines[0])
+		if err != nil {
+			continue
+		}
+
+		timecodes := strings.Split(lines[1], " --> ")
+		if len(timecodes) != 2 {
+			continue
+		}
+
+		startTime, err := time.Parse("15:04:05,000", timecodes[0])
+		if err != nil {
+			continue
+		}
+		endTime, err := time.Parse("15:04:05,000", timecodes[1])
+		if err != nil {
+			continue
+		}
+
+		content := strings.Join(lines[2:], "\n")
+
+		subtitles = append(subtitles, Subtitle{
+			Index:   index,
+			Start:   time.Duration(startTime.Hour())*time.Hour + time.Duration(startTime.Minute())*time.Minute + time.Duration(startTime.Second())*time.Second + time.Duration(startTime.Nanosecond()),
+			End:     time.Duration(endTime.Hour())*time.Hour + time.Duration(endTime.Minute())*time.Minute + time.Duration(endTime.Second())*time.Second + time.Duration(endTime.Nanosecond()),
+			Content: content,
+		})
+	}
+	return subtitles, nil
+}
+
+func mergeSubtitlesAndReencode() error {
+	var allSubtitles []Subtitle
+
 	err := filepath.WalkDir("subtitles", func(path string, d fs.DirEntry, err error) error {
 		if err != nil {
 			return err
@@ -113,12 +168,29 @@ func mergeSubtitlesAndReencode(input, output string) error {
 			if err != nil {
 				return err
 			}
-			sb.Write(data)
+			subs, err := parseSrt(data)
+			if err != nil {
+				fmt.Printf("Error parsing srt file %s: %v\n", path, err)
+				return nil // continue to next file
+			}
+			allSubtitles = append(allSubtitles, subs...)
 		}
 		return nil
 	})
 	if err != nil {
 		return err
+	}
+
+	// Sort subtitles by start time
+	sort.Slice(allSubtitles, func(i, j int) bool {
+		return allSubtitles[i].Start < allSubtitles[j].Start
+	})
+
+	var sb strings.Builder
+	for i, sub := range allSubtitles {
+		sb.WriteString(fmt.Sprintf("%d\n", i+1))
+		sb.WriteString(fmt.Sprintf("%02d:%02d:%02d,000 --> %02d:%02d:%02d,000\n", sub.Start.Hours(), int(sub.Start.Minutes())%60, int(sub.Start.Seconds())%60, sub.End.Hours(), int(sub.End.Minutes())%60, int(sub.End.Seconds())%60))
+		sb.WriteString(sub.Content + "\n\n")
 	}
 
 	mergedSubtitles := "merged_sub_titles.srt" // Fixed filename to avoid FFmpeg path issues
@@ -127,13 +199,14 @@ func mergeSubtitlesAndReencode(input, output string) error {
 		return err
 	}
 
-	ffmpegCmd := exec.Command("ffmpeg",
-		"-i", input,
-		"-vf", fmt.Sprintf("subtitles=%s", mergedSubtitles),
-		"-c:a", "copy",
-		output,
-	)
-	return runCommand(ffmpegCmd) // Fixed runCommand parameter
+	//ffmpegCmd := exec.Command("ffmpeg",
+	//	"-i", input,
+	//	"-vf", fmt.Sprintf("subtitles=%s", mergedSubtitles),
+	//	"-c:a", "copy",
+	//	output,
+	//)
+	//return runCommand(ffmpegCmd) // Fixed runCommand parameter
+	return nil
 }
 
 func runCommand(cmd *exec.Cmd) error {
