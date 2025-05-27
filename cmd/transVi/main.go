@@ -55,7 +55,10 @@ func main() {
 
 	// 3. Process chunks in parallel
 	var chunks []Chunk
-	err = filepath.WalkDir("audio_parts", func(path string, d fs.DirEntry, err error) error {
+	err = filepath.WalkDir("audio_parts", func(path string, d fs.DirEntry, walkErr error) error {
+		if walkErr != nil {
+			return walkErr
+		}
 		if err != nil {
 			return err
 		}
@@ -95,7 +98,7 @@ func main() {
 	}
 
 	// 4. Merge subtitles and re-encode
-	err = mergeSubtitlesAndReencode(*input, *output)
+	err = mergeSubtitlesAndReencode()
 	if err != nil {
 		fmt.Printf("Merge and reencode failed: %v\n", err)
 		os.Exit(1)
@@ -106,7 +109,7 @@ func main() {
 	}()
 }
 
-func mergeSubtitlesAndReencode(input, output string) error {
+func mergeSubtitlesAndReencode() error {
 	var sb strings.Builder
 	err := filepath.WalkDir("subtitles", func(path string, d fs.DirEntry, err error) error {
 		if err != nil {
