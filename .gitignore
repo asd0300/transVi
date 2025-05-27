@@ -1,3 +1,4 @@
 cmd/transVi/audio_parts
 cmd/transVi/subtitles
 *.mp4
+merged_sub_titles.srt

@@ -100,6 +100,10 @@ func main() {
 		fmt.Printf("Merge and reencode failed: %v\n", err)
 		os.Exit(1)
 	}
+	defer func() {
+		os.RemoveAll("audio_parts")
+		os.RemoveAll("subtitles")
+	}()
 }
 
 func mergeSubtitlesAndReencode(input, output string) error {
@@ -126,14 +130,7 @@ func mergeSubtitlesAndReencode(input, output string) error {
 	if err != nil {
 		return err
 	}
-
-	ffmpegCmd := exec.Command("ffmpeg",
-		"-i", input,
-		"-vf", fmt.Sprintf("subtitles=%s", mergedSubtitles),
-		"-c:a", "copy",
-		output,
-	)
-	return runCommand(ffmpegCmd) // Fixed runCommand parameter
+	return nil
 }
 
 func runCommand(cmd *exec.Cmd) error {
